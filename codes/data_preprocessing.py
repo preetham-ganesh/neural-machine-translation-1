@@ -5,12 +5,14 @@
 
 
 import os
+import re
 import sys
 import logging
 
 import tensorflow as tf
 import tensorflow_datasets as tfds
 import pandas as pd
+import unicodedata
 
 from utils import load_json_file
 
@@ -23,7 +25,9 @@ def load_data_subset(european_language: str,
                      dataset_name: str,
                      starting_index: int,
                      ending_index: int) -> tuple:
-    """Loads data subset based on the current European language and dataset name. If the dataset name is paracrawl, then
+    """Loads data subset based on parameters.
+
+    Loads data subset based on the current European language and dataset name. If the dataset name is paracrawl, then
     the starting and ending indexes are used to select a subset from the paracrawl dataset. If the dataset name
     is either manythings or europarl, both the extracted datasets are returned.
 
@@ -91,6 +95,73 @@ def remove_html_markup(sentence: str) -> str:
     return processed_sentence
 
 
+def preprocess_sentence(sentence: str or bytes,
+                        language: str) -> str:
+    """Pre-processes a sentences based on the language, to remove unwanted characters, lowercase the sentence, etc., and
+    returns the processed sentence.
+
+    Args:
+        sentence: A string or bytes which contains the input sentence that needs to be processed.
+        language: A string which contains the language to which the input sentence belongs to.
+
+    Returns:
+        The processed sentence that does not have unwanted characters, lowercase letters, and many more.
+
+    """
+    # If the input sentence is of type bytes, it is converted into string by decoding it using UTF-8 format.
+    if type(language) != 'str':
+        sentence = sentence.decode('utf-8')
+    # Lowercases the letters in the sentence, and removes spaces from the beginning and the end of the sentence.
+    sentence = sentence.lower().strip()
+    # If sentence contains http or https or xml tags, an empty sentence is returned.
+    if 'http' in sentence or 'https' in sentence or 'xml' in sentence or '{}' in sentence:
+        return ''
+    # Removes HTML markups from the sentence.
+    sentence = remove_html_markup(sentence)
+    # Replaces newline and tabs with empty spaces.
+    sentence = sentence.replace('\n', ' ')
+    sentence = sentence.replace('\t', ' ')
+    # Converts UNICODE characters to ASCII format.
+    sentence = ''.join(i for i in unicodedata.normalize('NFD', sentence) if unicodedata.category(i) != 'Mn')
+    # Replaces descriptive tokens with their appropriate symbols.
+    sentence = sentence.replace('##at##-##at##', '-')
+    sentence = sentence.replace('&apos;', "'")
+    sentence = sentence.replace('&quot;', '"')
+    # Removes noise tokens from sentence.
+    noise_tokens = ['&#91;', '&#93;', '&#124;', ' ']
+    for i in range(len(noise_tokens)):
+        sentence = sentence.replace(noise_tokens[i], ' ')
+    # If language is English, then any characters apart from -!$&(),./%:;?@=_|$€a-z0-9 are filtered out.
+    if language == 'en':
+        sentence = re.sub(r"[^-!$&(),./%:;?@=_|$€a-z0-9]+", ' ', sentence)
+    # If language is Spanish, then any characters apart from -!$&(),./%:;?@=_|$€a-z0-9áéíñóúü¿¡ are filtered out.
+    elif language == 'es':
+        sentence = re.sub(r"[^-!$&(),./%:;?@=_|$€a-z0-9áéíñóúü¿¡]+", ' ', sentence)
+    # If language is French, then any characters apart from -!$&(),./%:;?@=_|$€a-z0-9ùûüÿ€àâæçéèêëïîôœ«» are filtered out.
+    elif language == 'fr':
+        sentence = re.sub(r"[^-!$&(),./%:;?@=_|$€a-z0-9ùûüÿ€àâæçéèêëïîôœ«»]+", ' ', sentence)
+    # If language is German, then any characters apart from -!$&(),./%:;?@=_|$€a-z0-9äöüß are filtered out.
+    elif language == 'de':
+        sentence = re.sub(r"[^-!$&(),./%:;?@=_|$€a-z0-9äöüß]+", ' ', sentence)
+    # If there are consecutive full-stops (.), then it is replaced with a single full-stop.
+    sentence = re.sub('\.{2,}', '.', sentence)
+    # Converts strings such as 8th, 1st, 3rd, & 2nd, into 8 th, 1 st, 3 rd, & 2 nd.
+    sentence = re.sub(r'(\d)th', r'\1 th', sentence, flags=re.I)
+    sentence = re.sub(r'(\d)st', r'\1 st', sentence, flags=re.I)
+    sentence = re.sub(r'(\d)rd', r'\1 rd', sentence, flags=re.I)
+    sentence = re.sub(r'(\d)nd', r'\1 nd', sentence, flags=re.I)
+    # Adds space between punctuation tokens.
+    punctuations = list("-!$&(),./%:;?€'")
+    for i in range(len(punctuations)):
+        sentence = sentence.replace(punctuations[i], ' ' + punctuations[i] + ' ')
+    sentence = sentence.replace('"', ' " ')
+    # Removes any space before the start or after the end of the sentence.
+    sentence = sentence.strip()
+    # Eliminates duplicate whitespaces between individual tokens.
+    sentence = re.sub(r'\s+', ' ', sentence)
+    return sentence
+
+
 def main():
     print()
     european_language = sys.argv[1]
@@ -101,7 +172,7 @@ def main():
     n_original_examples = original_data_info.splits['train'].num_examples
     n_sentences_pairs_per_dataset = 100000
     n_threads = int(sys.argv[2])
-    #cpu_thread_allocation(european_language, n_original_examples, n_threads, n_sentences_pairs_per_dataset)
+    cpu_thread_allocation(european_language, n_original_examples, n_threads, n_sentences_pairs_per_dataset)
 
 
 #if __name__ == '__main__':
@@ -131,7 +202,3 @@ def cpu_thread_allocation(european_language: str,
             n_cpu = n_datasets - i
             for j in range(n_cpu):
                 thread_dataset_allocation.append({'process_id': j, 'dataset': i + j})"""
-
-english_sentences, european_languages_sentences = load_data_subset('es', 'europarl', 0, 0)
-print(english_sentences[-5:])
-print(european_languages_sentences[-5:])
