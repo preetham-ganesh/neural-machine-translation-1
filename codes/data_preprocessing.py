@@ -13,6 +13,7 @@ import tensorflow as tf
 import tensorflow_datasets as tfds
 import pandas as pd
 import unicodedata
+from sklearn.utils import shuffle
 
 from utils import load_json_file
 
@@ -151,7 +152,7 @@ def preprocess_sentence(sentence: str or bytes,
     sentence = re.sub(r'(\d)rd', r'\1 rd', sentence, flags=re.I)
     sentence = re.sub(r'(\d)nd', r'\1 nd', sentence, flags=re.I)
     # Adds space between punctuation tokens.
-    punctuations = list("-!$&(),./%:;?€'")
+    punctuations = list("-!$&(),./%:;?@=_|$€¿¡«»")
     for i in range(len(punctuations)):
         sentence = sentence.replace(punctuations[i], ' ' + punctuations[i] + ' ')
     sentence = sentence.replace('"', ' " ')
@@ -162,17 +163,56 @@ def preprocess_sentence(sentence: str or bytes,
     return sentence
 
 
+def data_preprocessing(english_language_sentences: list,
+                       european_language_sentences: list,
+                       european_language: str) -> pd.DataFrame:
+    """Processes the English and European language sentences, in the current sub-datasset.
+
+    Args:
+        english_language_sentences: A list which contains the English language sentences.
+        european_language_sentences: A list which contains the European language sentences.
+        european_language: A string which contains the abbreviation for the current European language.
+
+    Returns:
+        A Pandas dataframe which contains the processed sentences for English language and European language.
+    """
+    # Creates an empty dataframe for saving the processed sentences.
+    processed_dataset = pd.DataFrame(columns=['en', european_language])
+    # Iterates across sentences in the English language and European language.
+    for i in range(len(english_language_sentences)):
+        # If the current English language sentence or European language sentence is null, then both the sentences are
+        # skipped.
+        if pd.isnull(english_language_sentences[i]) or pd.isnull(european_language_sentences[i]):
+            continue
+        else:
+            # Pre-processes English language sentence.
+            english_language_processed_sentence = preprocess_sentence(english_language_sentences[i], 'en')
+            # Pre-processes European language sentence.
+            european_language_processed_sentence = preprocess_sentence(european_language_sentences[i],
+                                                                       european_language)
+            # If the processed sentences for English language or European language is empty, then both the sentences are
+            # skipped.
+            if english_language_processed_sentence == '' or european_language_processed_sentence == '':
+                continue
+            # Appends the sentence pair, to the processed dataset.
+            current_processed_sentence_pair = {'en': english_language_processed_sentence,
+                                               european_language: european_language_processed_sentence}
+            processed_dataset = processed_dataset.append(current_processed_sentence_pair, ignore_index=True)
+    # Shuffles the processed dataset.
+    processed_dataset = shuffle(processed_dataset)
+    return processed_dataset
+
+
+def data_p(thread_data_information: dict):
+    x = 0
+
+
 def main():
     print()
     european_language = sys.argv[1]
-    _, original_data_info = tfds.load('para_crawl/en{}'.format(european_language), split='train', with_info=True)
-    print()
-    print('Datasets loaded successfully.')
-    print()
-    n_original_examples = original_data_info.splits['train'].num_examples
     n_sentences_pairs_per_dataset = 100000
     n_threads = int(sys.argv[2])
-    cpu_thread_allocation(european_language, n_original_examples, n_threads, n_sentences_pairs_per_dataset)
+    cpu_thread_allocation(european_language, n_threads, n_sentences_pairs_per_dataset)
 
 
 #if __name__ == '__main__':
@@ -188,11 +228,16 @@ print(european_language_sentence)
 print(european_language_sentences[0])
 
 
-def cpu_thread_allocation(european_language: str,
-                          n_original_examples: int,
+"""def cpu_thread_allocation(european_language: str,
                           n_threads: int,
-                          n_sentence_pairs_per_dataset) -> None:
-    n_datasets = n_original_examples // int(n_sentence_pairs_per_dataset)
+                          n_sentence_pairs_per_dataset: int) -> None:
+    _, original_data_paracrawl_info = tfds.load('para_crawl/en{}'.format(european_language), split='train',
+                                                with_info=True)
+    print()
+    print('Datasets loaded successfully.')
+    print()
+    n_original_examples = original_data_info.splits['train'].num_examples
+    n_sub_datasets_paracrawl = n_original_examples // int(n_sentence_pairs_per_dataset)
     for i in range(0, n_datasets, n_threads):
         thread_dataset_allocation = []
         if i + n_threads <= n_datasets:
@@ -201,4 +246,4 @@ def cpu_thread_allocation(european_language: str,
         else:
             n_cpu = n_datasets - i
             for j in range(n_cpu):
-                thread_dataset_allocation.append({'process_id': j, 'dataset': i + j})"""
+                thread_dataset_allocation.append({'process_id': j, 'dataset': i + j})
