@@ -163,7 +163,7 @@ def preprocess_sentence(sentence: str or bytes,
     return sentence
 
 
-def data_preprocessing(english_language_sentences: list,
+def create_sub_dataset(english_language_sentences: list,
                        european_language_sentences: list,
                        european_language: str) -> pd.DataFrame:
     """Processes the English and European language sentences, in the current sub-datasset.
@@ -177,7 +177,7 @@ def data_preprocessing(english_language_sentences: list,
         A Pandas dataframe which contains the processed sentences for English language and European language.
     """
     # Creates an empty dataframe for saving the processed sentences.
-    processed_dataset = pd.DataFrame(columns=['en', european_language])
+    processed_sub_dataset = pd.DataFrame(columns=['en', european_language])
     # Iterates across sentences in the English language and European language.
     for i in range(len(english_language_sentences)):
         # If the current English language sentence or European language sentence is null, then both the sentences are
@@ -197,14 +197,36 @@ def data_preprocessing(english_language_sentences: list,
             # Appends the sentence pair, to the processed dataset.
             current_processed_sentence_pair = {'en': english_language_processed_sentence,
                                                european_language: european_language_processed_sentence}
-            processed_dataset = processed_dataset.append(current_processed_sentence_pair, ignore_index=True)
+            processed_sub_dataset = processed_sub_dataset.append(current_processed_sentence_pair, ignore_index=True)
     # Shuffles the processed dataset.
-    processed_dataset = shuffle(processed_dataset)
-    return processed_dataset
+    processed_sub_dataset = shuffle(processed_sub_dataset)
+    return processed_sub_dataset
 
 
-def data_p(thread_data_information: dict):
-    x = 0
+def drop_lines_by_length(processed_sub_dataset: pd.DataFrame,
+                         european_language: str,
+                         english_sentence_max_length: int,
+                         european_sentence_max_length: int) -> pd.DataFrame:
+    """Drops sentences from the processed dataset if the length of the sentence is greater than the threshold.
+
+    Args:
+        processed_sub_dataset: A Pandas dataframe which contains the processed sentences for English language and
+                               European language.
+        european_language: A string which contains the abbreviation for the current European language.
+        english_sentence_max_length: An integer which contains the maximum length of a sentence from English language.
+        european_sentence_max_length: An integer which contains the maximum length of a sentence from European language.
+
+    Returns:
+        A pandas dataframe which contains processed sentences for English language and European language where the
+        length of sentence is less than or equal to 40.
+    """
+    # Iterates across pair of sentences in the processed dataset.
+    for i in range(len(processed_sub_dataset)):
+        # If length of sentence is greater than the maximum length then the sentence pair is dropped from the dataset.
+        if len(processed_sub_dataset['en'][i].split(' ')) > english_sentence_max_length or len(
+                processed_sub_dataset[european_language][i].split(' ')) > european_sentence_max_length:
+            processed_sub_dataset = processed_sub_dataset.drop([i])
+    return processed_sub_dataset
 
 
 def main():
@@ -212,6 +234,8 @@ def main():
     european_language = sys.argv[1]
     n_sentences_pairs_per_dataset = 100000
     n_threads = int(sys.argv[2])
+    input_sentence_max_length = int(sys.argv[3])
+    target_sentence_max_length = int(sys.argv[4])
     cpu_thread_allocation(european_language, n_threads, n_sentences_pairs_per_dataset)
 
 
