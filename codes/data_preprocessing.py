@@ -314,6 +314,38 @@ def dataset_preprocessing(current_thread_information: dict) -> None:
         os.makedirs(working_directory)
     file_path = '{}/dataset_{}.csv'.format(working_directory, current_thread_information['dataset_no'])
     processed_sub_dataset.to_csv(file_path, index=False)
+    print('Finished processing sentence pairs in dataset_{} with thread id {}, and saved successfully.'.format(
+        current_thread_information['dataset_no'], current_thread_information['thread_id']))
+    print()
+
+
+def combine_sub_datasets(n_datasets: int,
+                         european_language: str) -> None:
+    """Combines the sub_datasets generated into a single dataset and saves the combined dataset.
+
+    Args:
+        n_datasets: An integer which contains the total number of sub_datasets used for splitting the original dataset.
+        european_language: A string which contains the abbreviation for the current European language.
+
+    Returns:
+        None.
+    """
+    # Creates an empty dataframe for storing sentence pairs from all the sub_datasets.
+    combined_dataset = pd.DataFrame(columns=['en', european_language])
+    home_directory = os.path.dirname(os.getcwd())
+    working_directory = '{}/data/processed_data/{}-en/splitted_data'.format(home_directory, european_language)
+    # Iterates across all the saved sub_datasets for combining them.
+    for i in range(n_datasets):
+        file_path = '{}/dataset_{}.csv'.format(working_directory, i)
+        current_sub_dataset = pd.read_csv(file_path)
+        combined_dataset = combined_dataset.append(current_sub_dataset, ignore_index=True)
+    combined_dataset = shuffle(combined_dataset)
+    print('Total no. of sentence pairs in the combined dataset: {}', len(combined_dataset))
+    print()
+    file_path = '{}/data/processed_data/{}-en/train.csv'.format(home_directory, european_language)
+    combined_dataset.to_csv(file_path, index=False)
+    print('Finished saving the combined dataset with processed sentences for {}-en.'.format(european_language))
+    print()
 
 
 def main():
