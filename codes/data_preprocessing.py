@@ -41,14 +41,14 @@ def load_data_subset(european_language: str,
     Returns:
         A tuple which contains 2 lists, one for English language sentences, and one for Europarl language sentences.
     """
-    english_sentences, european_language_sentences = list(), list()
+    english_language_sentences, european_language_sentences = list(), list()
     if dataset_name == 'paracrawl':
         # Loads the current subset of paracrawl dataset using the starting and ending indexes as a Pandas dataframe.
         original_current_dataset = tfds.as_dataframe(tfds.load(
             'para_crawl/en{}'.format(european_language), split='train[{}:{}]'.format(starting_index, ending_index),
             data_dir='../data/downloaded_data/{}-en/paracrawl'.format(european_language)))
         # Converts the loaded dataframe into list of sentences.
-        english_sentences += list(original_current_dataset['en'])
+        english_language_sentences += list(original_current_dataset['en'])
         european_language_sentences += list(original_current_dataset[european_language])
     else:
         manythings_abbreviations = {'de': 'deu', 'es': 'spa', 'fr': 'fra'}
@@ -57,19 +57,19 @@ def load_data_subset(european_language: str,
             european_language, manythings_abbreviations[european_language]), sep='\t', encoding='utf-8',
             names=['en', european_language, '_'])
         # Converts the loaded dataframe into a list of sentences.
-        english_sentences += list(manythings_dataset['en'])
+        english_language_sentences += list(manythings_dataset['en'])
         european_language_sentences += list(manythings_dataset[european_language])
         # Reads English sentences, from the Europarl dataset.
         file = open('../data/extracted_data/{}-en/europarl/europarl-v7.{}-en.en'.format(
             european_language, european_language))
-        english_sentences += file.read().split('\n')
+        english_language_sentences += file.read().split('\n')
         file.close()
         # Reads European language sentences, from the Europarl dataset.
         file = open('../data/extracted_data/{}-en/europarl/europarl-v7.{}-en.{}'.format(
             european_language, european_language, european_language))
         european_language_sentences += file.read().split('\n')
         file.close()
-    return english_sentences, european_language_sentences
+    return english_language_sentences, european_language_sentences
 
 
 def remove_html_markup(sentence: str) -> str:
@@ -227,6 +227,64 @@ def drop_lines_by_length(processed_sub_dataset: pd.DataFrame,
                 processed_sub_dataset[european_language][i].split(' ')) > european_sentence_max_length:
             processed_sub_dataset = processed_sub_dataset.drop([i])
     return processed_sub_dataset
+
+
+def drop_duplicates(processed_sub_dataset: pd.DataFrame,
+                    european_language: str) -> pd.DataFrame:
+    """Drops duplicate sentence pairs from the processed sub_dataset, based on multiple conditions.
+
+    Args:
+        processed_sub_dataset: A Pandas dataframe which contains the processed sentences for English language and
+                               European language.
+        european_language: A string which contains the abbreviation for the current European language.
+
+    Returns:
+        A pandas dataframe which contains unique processed sentence pairs for English language and European language.
+    """
+    # If number of unique sentences in English language is less than in European language, then the duplicates are
+    # dropped based on English language.
+    if len(processed_sub_dataset['en'].unique()) < len(processed_sub_dataset[european_language].unique()):
+        processed_sub_dataset = processed_sub_dataset.drop_duplicates(subset='en', keep='first')
+    # If number of unique sentences in English language is greater than in European language, then the duplicates are
+    # dropped based on European language.
+    elif len(processed_sub_dataset['en'].unique()) > len(processed_sub_dataset[european_language].unique()):
+        processed_sub_dataset = processed_sub_dataset.drop_duplicates(subset=european_language, keep='first')
+    # If the number of sentences is same for both the languages, then the common duplicates are dropped.
+    else:
+        processed_sub_dataset = processed_sub_dataset.drop_duplicates()
+    return processed_sub_dataset
+
+
+def dataset_preprocessing(current_thread_information: dict):
+    print('Started processing {}_{} dataset with thread id {}.'.format(
+        current_thread_information['dataset_name'], current_thread_information['dataset_no'],
+        current_thread_information['thread_id']))
+    print()
+    english_language_sentences, european_language_sentences = load_data_subset(
+        current_thread_information['european_language'], current_thread_information['dataset_name'],
+        current_thread_information['starting_index'], current_thread_information['ending_index'])
+    print('Loaded sentences from {}_{} dataset for pre-processing with thread id {}.'.format(
+        current_thread_information['dataset_name'], current_thread_information['dataset_no'],
+        current_thread_information['thread_id']))
+    print()
+    print('No. of original English language sentences in the {}_{} dataset with thread id {}: {}'.format(
+        current_thread_information['dataset_name'], current_thread_information['dataset_no'],
+        current_thread_information['thread_id'], len(english_language_sentences)))
+    print()
+    print('No. of original European language ({}) sentences in the {}_{} dataset with thread id {}: {}'.format(
+        current_thread_information['european_language'], current_thread_information['dataset_name'],
+        current_thread_information['dataset_no'], current_thread_information['thread_id'],
+        len(european_language_sentences)))
+    print()
+    processed_sub_dataset = create_sub_dataset(english_language_sentences, european_language_sentences,
+                                               current_thread_information['european_language'])
+    print('No. of processed sentence pairs in the {}_{} dataset with thread id {}: {}'.format(
+        current_thread_information['dataset_name'], current_thread_information['dataset_no'],
+        current_thread_information['thread_id'], len(processed_sub_dataset)))
+    print()
+
+
+
 
 
 def main():
