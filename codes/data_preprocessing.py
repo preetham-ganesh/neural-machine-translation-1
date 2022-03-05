@@ -108,10 +108,14 @@ def preprocess_sentence(sentence: str or bytes,
     Returns:
         The processed sentence that does not have unwanted characters, lowercase letters, and many more.
 
+    Raises:
+        AttributeError: If the type of sentence is not bytes, then the error is raised.
     """
     # If the input sentence is of type bytes, it is converted into string by decoding it using UTF-8 format.
-    if type(language) != 'str':
+    try:
         sentence = sentence.decode('utf-8')
+    except AttributeError:
+        _ = ''
     # Lowercases the letters in the sentence, and removes spaces from the beginning and the end of the sentence.
     sentence = sentence.lower().strip()
     # If sentence contains http or https or xml tags, an empty sentence is returned.
@@ -205,28 +209,29 @@ def create_sub_dataset(english_language_sentences: list,
 
 def drop_lines_by_length(processed_sub_dataset: pd.DataFrame,
                          european_language: str,
-                         english_sentence_max_length: int,
-                         european_sentence_max_length: int) -> pd.DataFrame:
+                         sentence_max_length: int) -> pd.DataFrame:
     """Drops sentences from the processed dataset if the length of the sentence is greater than the threshold.
 
     Args:
         processed_sub_dataset: A Pandas dataframe which contains the processed sentences for English language and
                                European language.
         european_language: A string which contains the abbreviation for the current European language.
-        english_sentence_max_length: An integer which contains the maximum length of a sentence from English language.
-        european_sentence_max_length: An integer which contains the maximum length of a sentence from European language.
+        sentence_max_length: An integer which contains the maximum length of a sentence in the dataset.
 
     Returns:
         A pandas dataframe which contains processed sentences for English language and European language where the
-        length of sentence is less than or equal to 40.
+        length of sentence is less than or equal to sentence_max_length.
     """
+    # Creates an empty dataframe for saving the sentence pairs which has length less than sentence max length.
+    new_processed_sub_dataset = pd.DataFrame(columns=processed_sub_dataset.columns)
     # Iterates across pair of sentences in the processed dataset.
     for i in range(len(processed_sub_dataset)):
         # If length of sentence is greater than the maximum length then the sentence pair is dropped from the dataset.
-        if len(processed_sub_dataset['en'][i].split(' ')) > english_sentence_max_length or len(
-                processed_sub_dataset[european_language][i].split(' ')) > european_sentence_max_length:
-            processed_sub_dataset = processed_sub_dataset.drop([i])
-    return processed_sub_dataset
+        if len(processed_sub_dataset['en'].iloc[i].split(' ')) <= sentence_max_length or len(
+                processed_sub_dataset[european_language].iloc[i].split(' ')) <= sentence_max_length:
+            new_processed_sub_dataset = new_processed_sub_dataset.append(processed_sub_dataset.iloc[i],
+                                                                         ignore_index=False)
+    return new_processed_sub_dataset
 
 
 def drop_duplicates(processed_sub_dataset: pd.DataFrame,
@@ -255,7 +260,16 @@ def drop_duplicates(processed_sub_dataset: pd.DataFrame,
     return processed_sub_dataset
 
 
-def dataset_preprocessing(current_thread_information: dict):
+def dataset_preprocessing(current_thread_information: dict) -> None:
+    """Using the thread information, loads the sub_dataset, pre-processes the sentence pairs, drops duplicates, drops
+    sentence pairs with length greater than 40 tokens, and saves the processed_dataset.
+
+    Args:
+        current_thread_information: A dictionary which contains the information for current thread.
+
+    Returns:
+        None.
+    """
     print('Started processing {}_{} dataset with thread id {}.'.format(
         current_thread_information['dataset_name'], current_thread_information['dataset_no'],
         current_thread_information['thread_id']))
@@ -282,9 +296,24 @@ def dataset_preprocessing(current_thread_information: dict):
         current_thread_information['dataset_name'], current_thread_information['dataset_no'],
         current_thread_information['thread_id'], len(processed_sub_dataset)))
     print()
-
-
-
+    processed_sub_dataset = drop_duplicates(processed_sub_dataset, current_thread_information['european_language'])
+    print('No. of unique processed sentence pairs in the {}_{} dataset with thread id {}: {}'.format(
+        current_thread_information['dataset_name'], current_thread_information['dataset_no'],
+        current_thread_information['thread_id'], len(processed_sub_dataset)))
+    print()
+    processed_sub_dataset = drop_lines_by_length(processed_sub_dataset, current_thread_information['european_language'],
+                                                 current_thread_information['sentence_max_length'])
+    print('No. of unique sentence pairs after dropping longer ones in the {}_{} dataset with thread id {}: {}'.format(
+        current_thread_information['dataset_name'], current_thread_information['dataset_no'],
+        current_thread_information['thread_id'], len(processed_sub_dataset)))
+    print()
+    home_directory = os.path.dirname(os.getcwd())
+    working_directory = '{}/data/processed_data/{}-en/splitted_data'.format(
+        home_directory, current_thread_information['european_language'])
+    if not os.path.isdir(working_directory):
+        os.makedirs(working_directory)
+    file_path = '{}/dataset_{}.csv'.format(working_directory, current_thread_information['dataset_no'])
+    processed_sub_dataset.to_csv(file_path, index=False)
 
 
 def main():
@@ -292,9 +321,8 @@ def main():
     european_language = sys.argv[1]
     n_sentences_pairs_per_dataset = 100000
     n_threads = int(sys.argv[2])
-    input_sentence_max_length = int(sys.argv[3])
-    target_sentence_max_length = int(sys.argv[4])
-    cpu_thread_allocation(european_language, n_threads, n_sentences_pairs_per_dataset)
+    sentence_max_length = int(sys.argv[3])
+    #cpu_thread_allocation(european_language, n_threads, n_sentences_pairs_per_dataset)
 
 
 #if __name__ == '__main__':
@@ -310,7 +338,7 @@ print(european_language_sentence)
 print(european_language_sentences[0])
 
 
-"""def cpu_thread_allocation(european_language: str,
+def cpu_thread_allocation(european_language: str,
                           n_threads: int,
                           n_sentence_pairs_per_dataset: int) -> None:
     _, original_data_paracrawl_info = tfds.load('para_crawl/en{}'.format(european_language), split='train',
@@ -328,4 +356,9 @@ print(european_language_sentences[0])
         else:
             n_cpu = n_datasets - i
             for j in range(n_cpu):
-                thread_dataset_allocation.append({'process_id': j, 'dataset': i + j})
+                thread_dataset_allocation.append({'process_id': j, 'dataset': i + j})"""
+
+data = {'dataset_name': 'paracrawl', 'dataset_no': 0, 'thread_id': 0, 'european_language': 'es', 'starting_index': 0,
+        'ending_index': 10000, 'sentence_max_length': 40}
+
+dataset_preprocessing(data)
