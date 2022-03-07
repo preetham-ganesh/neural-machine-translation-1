@@ -70,8 +70,6 @@ def preprocess_sentence(sentence: str or bytes,
     # Replaces newline and tabs with empty spaces.
     sentence = sentence.replace('\n', ' ')
     sentence = sentence.replace('\t', ' ')
-    # Converts UNICODE characters to ASCII format.
-    sentence = ''.join(i for i in unicodedata.normalize('NFD', sentence) if unicodedata.category(i) != 'Mn')
     # Replaces descriptive tokens with their appropriate symbols.
     sentence = sentence.replace('##at##-##at##', '-')
     sentence = sentence.replace('&apos;', "'")
@@ -82,6 +80,8 @@ def preprocess_sentence(sentence: str or bytes,
         sentence = sentence.replace(noise_tokens[i], ' ')
     # If language is English, then any characters apart from -!$&(),./%:;?@=_|$€a-z0-9 are filtered out.
     if language == 'en':
+        # Converts UNICODE characters to ASCII format.
+        sentence = ''.join(i for i in unicodedata.normalize('NFD', sentence) if unicodedata.category(i) != 'Mn')
         sentence = re.sub(r"[^-!$&(),./%:;?@=_|$€a-z0-9]+", ' ', sentence)
     # If language is Spanish, then any characters apart from -!$&(),./%:;?@=_|$€a-z0-9áéíñóúü¿¡ are filtered out.
     elif language == 'es':
