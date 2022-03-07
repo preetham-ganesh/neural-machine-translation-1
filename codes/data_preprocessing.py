@@ -9,67 +9,14 @@ import re
 import sys
 import logging
 
-import tensorflow as tf
-import tensorflow_datasets as tfds
+import multiprocessing
 import pandas as pd
 import unicodedata
 from sklearn.utils import shuffle
 
-from utils import load_json_file
-
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 logging.getLogger('tensorflow').setLevel(logging.FATAL)
-
-
-def load_data_subset(european_language: str,
-                     dataset_name: str,
-                     starting_index: int,
-                     ending_index: int) -> tuple:
-    """Loads data subset based on parameters.
-
-    Loads data subset based on the current European language and dataset name. If the dataset name is paracrawl, then
-    the starting and ending indexes are used to select a subset from the paracrawl dataset. If the dataset name
-    is either manythings or europarl, both the extracted datasets are returned.
-
-    Args:
-        european_language: A string which contains the abbreviation for the current European language.
-        dataset_name: A string that contains current dataset name.
-        starting_index: An integer which contains the index from which the subset should be chosen.
-        ending_index: An integer which contains the index until which the subset should be chosen.
-
-    Returns:
-        A tuple which contains 2 lists, one for English language sentences, and one for Europarl language sentences.
-    """
-    english_language_sentences, european_language_sentences = list(), list()
-    if dataset_name == 'paracrawl':
-        # Loads the current subset of paracrawl dataset using the starting and ending indexes as a Pandas dataframe.
-        original_current_dataset = tfds.as_dataframe(tfds.load(
-            'para_crawl/en{}'.format(european_language), split='train[{}:{}]'.format(starting_index, ending_index),
-            data_dir='../data/downloaded_data/{}-en/paracrawl'.format(european_language)))
-        # Converts the loaded dataframe into list of sentences.
-        english_language_sentences += list(original_current_dataset['en'])
-        european_language_sentences += list(original_current_dataset[european_language])
-    else:
-        manythings_abbreviations = {'de': 'deu', 'es': 'spa', 'fr': 'fra'}
-        # Loads the manythings dataset for the current european language, as a Pandas dataframe.
-        manythings_dataset = pd.read_csv('../data/extracted_data/{}-en/manythings/{}.txt'.format(
-            european_language, manythings_abbreviations[european_language]), sep='\t', encoding='utf-8',
-            names=['en', european_language, '_'])
-        # Converts the loaded dataframe into a list of sentences.
-        english_language_sentences += list(manythings_dataset['en'])
-        european_language_sentences += list(manythings_dataset[european_language])
-        # Reads English sentences, from the Europarl dataset.
-        file = open('../data/extracted_data/{}-en/europarl/europarl-v7.{}-en.en'.format(
-            european_language, european_language))
-        english_language_sentences += file.read().split('\n')
-        file.close()
-        # Reads European language sentences, from the Europarl dataset.
-        file = open('../data/extracted_data/{}-en/europarl/europarl-v7.{}-en.{}'.format(
-            european_language, european_language, european_language))
-        european_language_sentences += file.read().split('\n')
-        file.close()
-    return english_language_sentences, european_language_sentences
 
 
 def remove_html_markup(sentence: str) -> str:
@@ -97,13 +44,15 @@ def remove_html_markup(sentence: str) -> str:
 
 
 def preprocess_sentence(sentence: str or bytes,
-                        language: str) -> str:
+                        language: str,
+                        sentence_max_length: int) -> str:
     """Pre-processes a sentences based on the language, to remove unwanted characters, lowercase the sentence, etc., and
     returns the processed sentence.
 
     Args:
         sentence: A string or bytes which contains the input sentence that needs to be processed.
         language: A string which contains the language to which the input sentence belongs to.
+        sentence_max_length: An integer which contains the maximum length of a sentence in the dataset.
 
     Returns:
         The processed sentence that does not have unwanted characters, lowercase letters, and many more.
@@ -164,18 +113,25 @@ def preprocess_sentence(sentence: str or bytes,
     sentence = sentence.strip()
     # Eliminates duplicate whitespaces between individual tokens.
     sentence = re.sub(r'\s+', ' ', sentence)
-    return sentence
+    # If the number of tokens in the sentence is greater than sentence max length, then empty string is returned, else,
+    # the processed sentence is returned.
+    if len(sentence.split(' ')) > sentence_max_length:
+        return ''
+    else:
+        return sentence
 
 
 def create_sub_dataset(english_language_sentences: list,
                        european_language_sentences: list,
-                       european_language: str) -> pd.DataFrame:
+                       european_language: str,
+                       sentence_max_length: int) -> pd.DataFrame:
     """Processes the English and European language sentences, in the current sub-datasset.
 
     Args:
         english_language_sentences: A list which contains the English language sentences.
         european_language_sentences: A list which contains the European language sentences.
         european_language: A string which contains the abbreviation for the current European language.
+        sentence_max_length: An integer which contains the maximum length of a sentence in the dataset.
 
     Returns:
         A Pandas dataframe which contains the processed sentences for English language and European language.
@@ -190,10 +146,11 @@ def create_sub_dataset(english_language_sentences: list,
             continue
         else:
             # Pre-processes English language sentence.
-            english_language_processed_sentence = preprocess_sentence(english_language_sentences[i], 'en')
+            english_language_processed_sentence = preprocess_sentence(english_language_sentences[i], 'en',
+                                                                      sentence_max_length)
             # Pre-processes European language sentence.
             european_language_processed_sentence = preprocess_sentence(european_language_sentences[i],
-                                                                       european_language)
+                                                                       european_language, sentence_max_length)
             # If the processed sentences for English language or European language is empty, then both the sentences are
             # skipped.
             if english_language_processed_sentence == '' or european_language_processed_sentence == '':
@@ -205,33 +162,6 @@ def create_sub_dataset(english_language_sentences: list,
     # Shuffles the processed dataset.
     processed_sub_dataset = shuffle(processed_sub_dataset)
     return processed_sub_dataset
-
-
-def drop_lines_by_length(processed_sub_dataset: pd.DataFrame,
-                         european_language: str,
-                         sentence_max_length: int) -> pd.DataFrame:
-    """Drops sentences from the processed dataset if the length of the sentence is greater than the threshold.
-
-    Args:
-        processed_sub_dataset: A Pandas dataframe which contains the processed sentences for English language and
-                               European language.
-        european_language: A string which contains the abbreviation for the current European language.
-        sentence_max_length: An integer which contains the maximum length of a sentence in the dataset.
-
-    Returns:
-        A pandas dataframe which contains processed sentences for English language and European language where the
-        length of sentence is less than or equal to sentence_max_length.
-    """
-    # Creates an empty dataframe for saving the sentence pairs which has length less than sentence max length.
-    new_processed_sub_dataset = pd.DataFrame(columns=processed_sub_dataset.columns)
-    # Iterates across pair of sentences in the processed dataset.
-    for i in range(len(processed_sub_dataset)):
-        # If length of sentence is greater than the maximum length then the sentence pair is dropped from the dataset.
-        if len(processed_sub_dataset['en'].iloc[i].split(' ')) <= sentence_max_length or len(
-                processed_sub_dataset[european_language].iloc[i].split(' ')) <= sentence_max_length:
-            new_processed_sub_dataset = new_processed_sub_dataset.append(processed_sub_dataset.iloc[i],
-                                                                         ignore_index=False)
-    return new_processed_sub_dataset
 
 
 def drop_duplicates(processed_sub_dataset: pd.DataFrame,
@@ -260,7 +190,7 @@ def drop_duplicates(processed_sub_dataset: pd.DataFrame,
     return processed_sub_dataset
 
 
-def dataset_preprocessing(current_thread_information: dict) -> None:
+def sub_dataset_preprocessing(current_thread_information: dict) -> None:
     """Using the thread information, loads the sub_dataset, pre-processes the sentence pairs, drops duplicates, drops
     sentence pairs with length greater than 40 tokens, and saves the processed_dataset.
 
@@ -270,79 +200,110 @@ def dataset_preprocessing(current_thread_information: dict) -> None:
     Returns:
         None.
     """
-    print('Started processing {}_{} dataset with thread id {}.'.format(
-        current_thread_information['dataset_name'], current_thread_information['dataset_no'],
-        current_thread_information['thread_id']))
+    print('Started processing dataset_{} with thread id {}.'.format(current_thread_information['dataset_number'],
+                                                                    current_thread_information['thread_id']))
     print()
-    english_language_sentences, european_language_sentences = load_data_subset(
-        current_thread_information['european_language'], current_thread_information['dataset_name'],
-        current_thread_information['starting_index'], current_thread_information['ending_index'])
-    print('Loaded sentences from {}_{} dataset for pre-processing with thread id {}.'.format(
-        current_thread_information['dataset_name'], current_thread_information['dataset_no'],
-        current_thread_information['thread_id']))
+    current_sub_dataset = pd.read_csv('../data/extracted_data/{}-en/splitted_data/dataset_{}.csv'.format(
+        current_thread_information['european_language'], current_thread_information['dataset_number']))
+    english_language_sentences = list(current_sub_dataset['en'])
+    european_language_sentences = list(current_sub_dataset[current_thread_information['european_language']])
+    print('Loaded sentences from dataset_{} for pre-processing with thread id {}.'.format(
+        current_thread_information['dataset_number'], current_thread_information['thread_id']))
     print()
-    print('No. of original English language sentences in the {}_{} dataset with thread id {}: {}'.format(
-        current_thread_information['dataset_name'], current_thread_information['dataset_no'],
-        current_thread_information['thread_id'], len(english_language_sentences)))
+    print('No. of original English language sentences in the dataset_{} with thread id {}: {}'.format(
+        current_thread_information['dataset_number'], current_thread_information['thread_id'],
+        len(english_language_sentences)))
     print()
-    print('No. of original European language ({}) sentences in the {}_{} dataset with thread id {}: {}'.format(
-        current_thread_information['european_language'], current_thread_information['dataset_name'],
-        current_thread_information['dataset_no'], current_thread_information['thread_id'],
-        len(european_language_sentences)))
+    print('No. of original European language ({}) sentences in the dataset_{} with thread id {}: {}'.format(
+        current_thread_information['european_language'], current_thread_information['dataset_number'],
+        current_thread_information['thread_id'], len(european_language_sentences)))
     print()
     processed_sub_dataset = create_sub_dataset(english_language_sentences, european_language_sentences,
-                                               current_thread_information['european_language'])
-    print('No. of processed sentence pairs in the {}_{} dataset with thread id {}: {}'.format(
-        current_thread_information['dataset_name'], current_thread_information['dataset_no'],
-        current_thread_information['thread_id'], len(processed_sub_dataset)))
+                                               current_thread_information['european_language'],
+                                               current_thread_information['sentence_max_length'])
+    print('No. of processed sentence pairs in the dataset_{} with thread id {}: {}'.format(
+        current_thread_information['dataset_number'], current_thread_information['thread_id'],
+        len(processed_sub_dataset)))
     print()
     processed_sub_dataset = drop_duplicates(processed_sub_dataset, current_thread_information['european_language'])
-    print('No. of unique processed sentence pairs in the {}_{} dataset with thread id {}: {}'.format(
-        current_thread_information['dataset_name'], current_thread_information['dataset_no'],
-        current_thread_information['thread_id'], len(processed_sub_dataset)))
+    print('No. of unique processed sentence pairs in the dataset_{} with thread id {}: {}'.format(
+        current_thread_information['dataset_number'], current_thread_information['thread_id'],
+        len(processed_sub_dataset)))
     print()
-    processed_sub_dataset = drop_lines_by_length(processed_sub_dataset, current_thread_information['european_language'],
-                                                 current_thread_information['sentence_max_length'])
-    print('No. of unique sentence pairs after dropping longer ones in the {}_{} dataset with thread id {}: {}'.format(
-        current_thread_information['dataset_name'], current_thread_information['dataset_no'],
-        current_thread_information['thread_id'], len(processed_sub_dataset)))
-    print()
+    # Creates the following directory path if it does not exist.
     home_directory = os.path.dirname(os.getcwd())
     working_directory = '{}/data/processed_data/{}-en/splitted_data'.format(
         home_directory, current_thread_information['european_language'])
     if not os.path.isdir(working_directory):
         os.makedirs(working_directory)
-    file_path = '{}/dataset_{}.csv'.format(working_directory, current_thread_information['dataset_no'])
+    file_path = '{}/dataset_{}.csv'.format(working_directory, current_thread_information['dataset_number'])
     processed_sub_dataset.to_csv(file_path, index=False)
     print('Finished processing sentence pairs in dataset_{} with thread id {}, and saved successfully.'.format(
-        current_thread_information['dataset_no'], current_thread_information['thread_id']))
+        current_thread_information['dataset_number'], current_thread_information['thread_id']))
     print()
 
 
-def combine_sub_datasets(n_datasets: int,
-                         european_language: str) -> None:
+def cpu_thread_allocation(european_language: str,
+                          n_threads: int,
+                          sentence_max_length: int) -> None:
+    """Allocates threads for each sub_dataset iteratively, and performs pre-processing.
+
+    Args:
+        european_language: A string which contains the abbreviation for the current European language.
+        n_threads: An integer which contains total number of threads allocated for pre-processing the dataset.
+        sentence_max_length: An integer which contains the maximum length of a sentence in the dataset.
+
+    Returns:
+        None.
+    """
+    # Identifies the number of datasets, in the specified directory.
+    working_directory = '../data/extracted_data/{}-en/splitted_data'.format(european_language)
+    n_datasets = len(os.listdir(working_directory))
+    # Iterates across all the datasets, stores information for each datasets and allocates thread.
+    for i in range(0, n_datasets, n_threads):
+        thread_dataset_allocation = []
+        if i + n_threads <= n_datasets:
+            for j in range(n_threads):
+                thread_dataset_allocation.append({'dataset_number': i + j, 'thread_id': j,
+                                                  'european_language': european_language,
+                                                  'sentence_max_length': sentence_max_length})
+            pool = multiprocessing.Pool(processes=n_threads)
+        else:
+            n_threads = n_datasets - i
+            for j in range(n_threads):
+                thread_dataset_allocation.append({'dataset_number': i + j, 'thread_id': j,
+                                                  'european_language': european_language,
+                                                  'sentence_max_length': sentence_max_length})
+            pool = multiprocessing.Pool(processes=n_threads)
+        pool.map(sub_dataset_preprocessing, thread_dataset_allocation)
+        pool.close()
+
+
+def combine_sub_datasets(european_language: str) -> None:
     """Combines the sub_datasets generated into a single dataset and saves the combined dataset.
 
     Args:
-        n_datasets: An integer which contains the total number of sub_datasets used for splitting the original dataset.
         european_language: A string which contains the abbreviation for the current European language.
 
     Returns:
         None.
     """
+    working_directory = '../data/processed_data/{}-en/splitted_data'.format(european_language)
+    n_datasets = len(os.listdir(working_directory))
     # Creates an empty dataframe for storing sentence pairs from all the sub_datasets.
     combined_dataset = pd.DataFrame(columns=['en', european_language])
-    home_directory = os.path.dirname(os.getcwd())
-    working_directory = '{}/data/processed_data/{}-en/splitted_data'.format(home_directory, european_language)
     # Iterates across all the saved sub_datasets for combining them.
     for i in range(n_datasets):
         file_path = '{}/dataset_{}.csv'.format(working_directory, i)
         current_sub_dataset = pd.read_csv(file_path)
         combined_dataset = combined_dataset.append(current_sub_dataset, ignore_index=True)
     combined_dataset = shuffle(combined_dataset)
-    print('Total no. of sentence pairs in the combined dataset: {}', len(combined_dataset))
+    print('Total no. of sentence pairs in the combined dataset: {}'.format(len(combined_dataset)))
     print()
-    file_path = '{}/data/processed_data/{}-en/train.csv'.format(home_directory, european_language)
+    combined_dataset = drop_duplicates(combined_dataset, european_language)
+    print('Total no. of unique processed sentence pairs in the combined dataset: {}'.format(len(combined_dataset)))
+    print()
+    file_path = '../data/processed_data/{}-en/train.csv'.format(european_language)
     combined_dataset.to_csv(file_path, index=False)
     print('Finished saving the combined dataset with processed sentences for {}-en.'.format(european_language))
     print()
@@ -351,46 +312,11 @@ def combine_sub_datasets(n_datasets: int,
 def main():
     print()
     european_language = sys.argv[1]
-    n_sentences_pairs_per_dataset = 100000
     n_threads = int(sys.argv[2])
     sentence_max_length = int(sys.argv[3])
-    #cpu_thread_allocation(european_language, n_threads, n_sentences_pairs_per_dataset)
+    cpu_thread_allocation(european_language, n_threads, sentence_max_length)
+    combine_sub_datasets(european_language)
 
 
-#if __name__ == '__main__':
-#    main()
-
-
-"""english_sentences, european_language_sentences = load_data_subset('es', 'manythings', 0, 100)
-english_sentence = english_sentences[0].decode('utf-8')
-print(english_sentences[0])
-print(english_sentence)
-european_language_sentence = european_language_sentences[0].decode('utf-8')
-print(european_language_sentence)
-print(european_language_sentences[0])
-
-
-def cpu_thread_allocation(european_language: str,
-                          n_threads: int,
-                          n_sentence_pairs_per_dataset: int) -> None:
-    _, original_data_paracrawl_info = tfds.load('para_crawl/en{}'.format(european_language), split='train',
-                                                with_info=True)
-    print()
-    print('Datasets loaded successfully.')
-    print()
-    n_original_examples = original_data_info.splits['train'].num_examples
-    n_sub_datasets_paracrawl = n_original_examples // int(n_sentence_pairs_per_dataset)
-    for i in range(0, n_datasets, n_threads):
-        thread_dataset_allocation = []
-        if i + n_threads <= n_datasets:
-            for j in range(n_threads):
-                thread_dataset_allocation.append({'process_id': j, 'dataset': i + j, })
-        else:
-            n_cpu = n_datasets - i
-            for j in range(n_cpu):
-                thread_dataset_allocation.append({'process_id': j, 'dataset': i + j})"""
-
-data = {'dataset_name': 'paracrawl', 'dataset_no': 0, 'thread_id': 0, 'european_language': 'es', 'starting_index': 0,
-        'ending_index': 10000, 'sentence_max_length': 40}
-
-dataset_preprocessing(data)
+if __name__ == '__main__':
+    main()
