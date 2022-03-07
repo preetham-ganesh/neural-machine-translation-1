@@ -80,7 +80,8 @@ def extract_europarl_datasets(european_language: str,
     # Extracts manythings dataset for the current european language.
     with zipfile.ZipFile('../data/downloaded_data/{}-en/{}-eng.zip'.format(
             european_language, manythings_abbreviations[european_language])) as file:
-        file.extract('spa.txt', '../data/extracted_data/{}-en/manythings'.format(european_language))
+        file.extract('{}.txt'.format(manythings_abbreviations[european_language]),
+                     '../data/extracted_data/{}-en/manythings'.format(european_language))
     file.close()
     print('Extracted manythings dataset for {}-en.'.format(european_language))
     print()
