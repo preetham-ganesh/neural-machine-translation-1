@@ -7,16 +7,11 @@
 import os
 import re
 import sys
-import logging
 
 import multiprocessing
 import pandas as pd
 import unicodedata
 from sklearn.utils import shuffle
-
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-logging.getLogger('tensorflow').setLevel(logging.FATAL)
 
 
 def remove_html_markup(sentence: str) -> str:
