@@ -1,11 +1,9 @@
-# authors_name = 'Preetham Ganesh, Bharat S Rawal, Alexander Peter, Andi Giri'
-# project_title = 'POS Tagging-based Neural Machine Translation System for European Languages using Transformers'
-# email = 'preetham.ganesh2015@gmail.com, rawalksh001@gannon.edu, apeter@softsquare.biz, asgiri@softsquare.biz'
-# doi = 'www.doi.org/10.37394/23209.2021.18.5'
+# author_name = 'Preetham Ganesh'
+# project_title = 'POS Tagging-based Neural Machine Translation System for European Languages'
+# email = 'preetham.ganesh2015@gmail.com'
 
 
 import os
-import sys
 import logging
 import warnings
 
@@ -15,6 +13,7 @@ logging.getLogger("tensorflow").setLevel(logging.FATAL)
 warnings.filterwarnings("ignore")
 
 
+import requests
 import tensorflow_datasets as tfds
 import zipfile
 import tarfile
@@ -80,3 +79,35 @@ def log_information(log: str) -> None:
     except NameError:
         _ = ""
     print(log)
+
+
+def download_tar_file(url: str, file_name: str, directory_path: str) -> None:
+    """Downloads the tar file from the URL provided and stores it locally.
+
+    Args:
+        url: A string which contains URL where the file is located on the internet.
+        file_name: A string which contains name with which the file shoule be saved.
+        directory_path: A string which contains the path where the file needs to be saved.
+    
+    Returns:
+        None.
+    """
+    # Checks if the following directory path exists.
+    directory_path = check_directory_path_existence(directory_path)
+
+    # Obtains response for the URL.
+    response = requests.get(url, stream=True)
+
+    # Downloaded File path.
+    file_path = '{}/{}'.format(directory_path, file_name)
+
+    # If the status code for the URL code is OK, then the file is downloaded.
+    if response.status_code == 200:
+        with open(file_path, 'wb') as out_file:
+            out_file.write(response.raw.read())
+        out_file.close()
+        log_information("Downloaded file from URL and saved at {} successfully.".format(file_path))
+    
+    else:
+        log_information("The URL request produced {} status code.".format(response.status_code))
+
