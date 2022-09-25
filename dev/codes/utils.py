@@ -6,6 +6,7 @@
 import os
 import logging
 import warnings
+import sys
 
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -81,22 +82,24 @@ def log_information(log: str) -> None:
     print(log)
 
 
-def download_tar_file(url: str, file_name: str, directory_path: str) -> None:
+def download_tar_file(url: str, directory_path: str) -> str:
     """Downloads the tar file from the URL provided and stores it locally.
 
     Args:
         url: A string which contains URL where the file is located on the internet.
-        file_name: A string which contains name with which the file shoule be saved.
         directory_path: A string which contains the path where the file needs to be saved.
     
     Returns:
-        None.
+        A string which contains absolution file path where the downloaded file is stored.
     """
     # Checks if the following directory path exists.
     directory_path = check_directory_path_existence(directory_path)
 
     # Obtains response for the URL.
     response = requests.get(url, stream=True)
+
+    # Extracts file name from URL.
+    file_name = url.rsplit("/")[-1]
 
     # Downloaded File path.
     file_path = '{}/{}'.format(directory_path, file_name)
@@ -107,7 +110,9 @@ def download_tar_file(url: str, file_name: str, directory_path: str) -> None:
             out_file.write(response.raw.read())
         out_file.close()
         log_information("Downloaded file from URL and saved at {} successfully.".format(file_path))
-    
+        return file_path
+
     else:
         log_information("The URL request produced {} status code.".format(response.status_code))
-
+        log_information('')
+        sys.exit()
