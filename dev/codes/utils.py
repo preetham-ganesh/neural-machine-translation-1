@@ -128,11 +128,41 @@ def extract_from_tar_file(tar_file_path: str, extracted_files_directory_path: st
     
     Returns:
         None.
+
+    Exceptions:
+        tarfile.TarError: When file loaded was not of type TAR.
     """
     # Checks if the following directory path exists.
     extracted_files_directory_path = check_directory_path_existence(extracted_files_directory_path)
 
     # Extracts files from the compressed TAR file.
-    tar_file = tarfile.open(tar_file_path)
-    tar_file.extractall(extracted_files_directory_path)
-    tar_file.close()
+    try:
+        tar_file = tarfile.open(tar_file_path)
+        tar_file.extractall(extracted_files_directory_path)
+        tar_file.close()
+    except tarfile.TarError:
+        raise Exception("File loaded was not of type *.tar")
+
+
+def extract_from_zip_file(zip_file_path: str, file_name: str, extracted_files_directory_path: str) -> None:
+    """Extracts files from the compressed ZIP file.
+
+    Args:
+        zip_file_path: A string which contains the location where the compressed ZIP file is located.
+        file_name: A string which contains the name by which the extracted file should be saved as.
+        extracted_files_directory_path: A string which contains the directory path where the extracted files should be 
+            saved.
+    
+    Returns:
+        None.
+    
+    Exceptions:
+        zipfile.BadZipFile: When file loaded was not of type ZIP.
+    """
+    # Extracts files from compressed ZIP file.
+    try:
+        with zipfile.ZipFile(zip_file_path) as file:
+            file.extract(file_name, extracted_files_directory_path)
+            file.close()
+    except zipfile.BadZipFile:
+        raise Exception("File loaded was not of type *.zip")
