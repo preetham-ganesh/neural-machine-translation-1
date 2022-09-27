@@ -15,7 +15,6 @@ warnings.filterwarnings("ignore")
 
 
 import requests
-import tensorflow_datasets as tfds
 import zipfile
 import tarfile
 import pandas as pd
@@ -82,8 +81,8 @@ def log_information(log: str) -> None:
     print(log)
 
 
-def download_tar_file(url: str, directory_path: str) -> str:
-    """Downloads the tar file from the URL provided and stores it locally.
+def download_file_from_url(url: str, directory_path: str) -> str:
+    """Downloads file from the URL provided and stores it locally.
 
     Args:
         url: A string which contains URL where the file is located on the internet.
@@ -105,14 +104,35 @@ def download_tar_file(url: str, directory_path: str) -> str:
     file_path = '{}/{}'.format(directory_path, file_name)
 
     # If the status code for the URL code is OK, then the file is downloaded.
-    if response.status_code == 200:
+    if response.status_code == 200 or response.status_code == 406:
         with open(file_path, 'wb') as out_file:
             out_file.write(response.raw.read())
         out_file.close()
         log_information("Downloaded file from URL and saved at {} successfully.".format(file_path))
+        log_information("")
         return file_path
 
     else:
         log_information("The URL request produced {} status code.".format(response.status_code))
         log_information('')
         sys.exit()
+
+
+def extract_from_tar_file(tar_file_path: str, extracted_files_directory_path: str) -> None:
+    """Extracts files from the compressed TAR file.
+
+    Args:
+        tar_file_path: A string which contains the location where the compressed TAR file is located.
+        extracted_files_directory_path: A string which contains the directory path where the extracted files should be 
+            saved.
+    
+    Returns:
+        None.
+    """
+    # Checks if the following directory path exists.
+    extracted_files_directory_path = check_directory_path_existence(extracted_files_directory_path)
+
+    # Extracts files from the compressed TAR file.
+    tar_file = tarfile.open(tar_file_path)
+    tar_file.extractall(extracted_files_directory_path)
+    tar_file.close()
