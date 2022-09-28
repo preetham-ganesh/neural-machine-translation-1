@@ -94,17 +94,23 @@ def download_file_from_url(url: str, directory_path: str) -> str:
     # Checks if the following directory path exists.
     directory_path = check_directory_path_existence(directory_path)
 
-    # Obtains response for the URL.
-    response = requests.get(url, stream=True)
-
     # Extracts file name from URL.
     file_name = url.rsplit("/")[-1]
 
     # Downloaded File path.
     file_path = '{}/{}'.format(directory_path, file_name)
 
+    # Checks if file is already existing in the system.
+    if os.path.isfile(file_path):
+        log_information("{} already exists in the system.".format(file_name))
+        log_information("")
+        return file_path
+
+    # Obtains response for the URL.
+    response = requests.get(url, stream=True)
+
     # If the status code for the URL code is OK, then the file is downloaded.
-    if response.status_code == 200 or response.status_code == 406:
+    if response.status_code == 200:
         with open(file_path, 'wb') as out_file:
             out_file.write(response.raw.read())
         out_file.close()
