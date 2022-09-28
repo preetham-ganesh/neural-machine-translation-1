@@ -5,12 +5,10 @@
 
 import argparse
 
-import tarfile
-
 from utils import create_log
 from utils import log_information
-from utils import download_file_from_url
 from utils import check_directory_path_existence
+from utils import download_file_from_url
 from utils import extract_from_tar_file
 from utils import extract_from_zip_file
 
@@ -65,8 +63,8 @@ def download_extract_europarl_dataset(european_language: str, language_abbreviat
     log_information("")
 
 
-def download_extract_manythings_dataset(european_language: str, language_abbreviation: str) -> None:
-    """Downloads & extracts Manythings dataset for the current european language.
+def extract_manythings_dataset(european_language: str, language_abbreviation: str) -> None:
+    """Extracts Manythings dataset for the current european language.
 
     Args:
         european_language: A string which contains the name of the current european lanuage.
@@ -75,22 +73,29 @@ def download_extract_manythings_dataset(european_language: str, language_abbrevi
     Returns:
         None.
     """
-    # Dictionary which contains URLs for ManyThings dataset language-wise.
-    dataset_urls = {
-        'german': 'http://www.manythings.org/anki/deu-eng.zip', 
-        'french': 'http://www.manythings.org/anki/fra-eng.zip',
-        'italian': 'http://www.manythings.org/anki/ita-eng.zip',
-        'spanish': 'http://www.manythings.org/anki/spa-eng.zip'
+    # Dictionary which contains file names for manythings dataset.
+    manythings_dataset_file_names = {
+        'german': 'deu-eng.zip',
+        'french': 'fra-eng.zip',
+        'italian': 'ita-eng.zip',
+        'spanish': 'spa-eng.zip'
     }
 
-    # Downloads the tar file for current european language.
-    zip_file_path = download_file_from_url(dataset_urls[european_language], 'data/original/manythings')
+    # Checks if the following directory path exists.
+    manythings_dataset_directory_path = check_directory_path_existence("data/original/manythings")
+
+    # Zip file path.
+    zip_file_path = '{}/{}'.format(manythings_dataset_directory_path, manythings_dataset_file_names[european_language])
 
     # Checks if the following directory path exists.
-    extracted_files_directory_path = 'data/extracted/manythings/'
+    extracted_files_directory_path = check_directory_path_existence('data/extracted/manythings/')
 
     # Extracts Manythings dataset for the current european language.
-    extract_from_zip_file(zip_file_path, '{}.txt'.format(language_abbreviation), extracted_files_directory_path)
+    extract_from_zip_file(
+        zip_file_path, '{}.txt'.format(
+            manythings_dataset_file_names[european_language].split('-')[0]
+        ), extracted_files_directory_path
+    )
     log_information("Extracted Manythings dataset for {} language.".format(european_language))
     log_information("")
 
@@ -109,10 +114,11 @@ def main():
         "french": 'fr-en'
     }
 
-    # Downloaded & Europarl dataset for the current european language.
-    # download_extract_europarl_dataset(european_language, dataset_abbreviations[european_language])
+    # Downloaded & extracts Europarl dataset for the current european language.
+    download_extract_europarl_dataset(european_language, dataset_abbreviations[european_language])
 
-    download_extract_manythings_dataset(european_language, dataset_abbreviations[european_language])
+    # Extracts Manythings dataset for the current european language.
+    extract_manythings_dataset(european_language, dataset_abbreviations[european_language])
 
 
 if __name__ == "__main__":
